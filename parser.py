@@ -4,6 +4,8 @@ from lxml import etree
 
 
 class Loader:
+    _file: str
+
     def __init__(self, schema: str):
         self._schema = etree.XMLSchema(schema)
 
@@ -12,7 +14,7 @@ class Loader:
 
 
 class Parser:
-    _file: str
+    _loader: Loader
     _validators: list
 
     def __init__(self, validators):
