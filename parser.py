@@ -1,30 +1,38 @@
+#!/usr/bin/env python
 import os
 import sys
 import argparse
 from lxml import etree
 
-
-class Loader:
-    _file: str
-
-    def __init__(self, schema: str):
-        self._schema = etree.XMLSchema(schema)
-
-    def load(self, file):
-        self._file = file
+from io import StringIO
 
 
 class Parser:
     _validators: dict
 
-    def __init__(self, validators: dict, schema):
+    def __init__(self, validators: dict):
         self.set_validators(validators)
-        self._schema = schema
+
+    def parse(self, file):
+        pass
+
+    def set_validators(self, validators):
+        self._validators = validators.copy()
+
+
+class XMLParser(Parser):
+    _schema: str
+
+    def __init__(self, validators: dict):
+        super().__init__(validators)
+        self.schema = etree.XMLSchema(etree.parse(self._schema))
 
     def parse(self, file):
         with open(file, 'r') as f:
             xml = f.read()
+
         root = etree.fromstring(xml)
+        self.schema.validate(etree.parse(StringIO(xml)))
         self._parse(root)
 
     def _parse(self, root: etree.Element):
@@ -35,12 +43,9 @@ class Parser:
         for elem in root.getchildren():
             self._parse(elem)
 
-    def set_validators(self, validators):
-        self._validators = validators.copy()
 
-
-class KRSUParser(Parser):
-    pass
+class KRSUParser(XMLParser):
+    _schema = 'krsu.xsd'
 
 
 class Node:
@@ -57,7 +62,7 @@ class IntNode(TextNode):
     @classmethod
     def validate(cls, node):
         if not node.text.isdigit():
-            print(f'--- ({node.tag}) <{node.text!r}> not integer')
+            print(f'--- ({node.tag}) <{node.text!r}> not integer'.center(os.get_terminal_size()[0]//2))
 
 
 class FileNode(Node):
@@ -75,27 +80,40 @@ class GroupNode(Node):
     pass
 
 
+class TestNode(Node):
+    @classmethod
+    def validate(cls, node):
+        _input = node.get('input')
+        _output = node.get('output')
+        cls.file_exists(_input)
+        cls.file_exists(_output)
+
+    @classmethod
+    def file_exists(cls, path):
+        if not os.path.isfile(path):
+            print(f'--- {path} not exists')
+
+
 types = {
     'krsu': KRSUParser({
-        'testinfo': Node,
         'checker': FileNode,
         'interactor': FileNode,
         'problem': FileNode,
+        'runtype': IntNode,
         'memorylimit': IntNode,
         'timelimit': IntNode,
         'testversion': IntNode,
         'group': GroupNode,
-    }, 'krsu.xsd'),
+        'test': TestNode,
+    }),
 }
 
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument('--type', '-t', choices=types.keys(), help='Parser type')
-    parser.add_argument('--file', '-f', help='Main xml file')
+    parser.add_argument('--type', '-t', choices=types.keys(), help='Parser type', default='krsu')
+    parser.add_argument('--file', '-f', help='Main xml file', default='testinfo.xml')
     args = parser.parse_args()
-    args.type = 'krsu'
-    args.file = 'testinfo.xml'
     cls = types[args.type]
     cls.parse(args.file)
     return 0
